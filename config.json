@@ -1,0 +1,10 @@
+{
+  "targetSelector":   ".webgl-enhance",
+  "defaultShader":    "color-pop",
+  "maxConcurrency":   2,
+  "rootMargin":       "500px",
+  
+  "tileSize":         4096,
+  "resizeDebounceMs": 150,
+  "canvasZIndex":     9999
+}
