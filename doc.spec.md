@@ -107,16 +107,19 @@ On startup, queries `gl.getParameter(gl.MAX_TEXTURE_SIZE)`. Caps the result at `
 
 On `onElementEnter`:
 
-1. `cols = Math.ceil(rect.width  / TILE_SIZE)`
-2. `rows = Math.ceil(rect.height / TILE_SIZE)`
-3. Nested loop over rows × cols produces a `tiles[]` array.
+1. Snap the element's four edges to integer physical pixels: `physLeft = Math.round(rect.left * dpr)`, etc. Derive `physWidth = physRight - physLeft`, `physHeight = physBottom - physTop`.
+2. `cols = Math.ceil(physWidth  / TILE_SIZE)`
+3. `rows = Math.ceil(physHeight / TILE_SIZE)`
+4. Nested loop over rows × cols produces a `tiles[]` array.
+
+Snapping edges before computing tile dimensions eliminates double-rounding error. On fractional-DPR displays (e.g. Windows at 125 % or 150 % scaling), computing dimensions in CSS px space and multiplying by dpr afterwards can produce a quad 1 physical pixel narrower than the element, visible as a transparent fringe on the edges.
 
 **Tile Object fields:**
 
 * `tileIndex`: Sequential index within the element's array.
-* `sourceX`, `sourceY`: Pixel offset to extract from the source image.
-* `width`, `height`: Tile dimensions (edge tiles may be smaller than `TILE_SIZE`).
-* `worldX`, `worldY`: Absolute page coordinates in CSS px (`rect.left + scrollX + sourceX`, `rect.top + scrollY + sourceY`). Multiplied by `dpr` only at the GPU vertex buffer boundary.
+* `sourceX`, `sourceY`: Pixel offset to extract from the scaled source image, in physical pixels.
+* `width`, `height`: Tile dimensions in physical pixels (edge tiles may be smaller than `TILE_SIZE`).
+* `worldX`, `worldY`: Absolute page coordinates in **physical pixels** (`physLeft + physScrollX + sourceX`, `physTop + physScrollY + sourceY`). Used directly as vertex buffer values with no further `* dpr` scaling.
 * `texture`: Starts `null`; filled in-place after worker returns a decoded bitmap.
 
 ## 3. The Asynchronous Factory (Web Worker)
@@ -138,11 +141,11 @@ Once `ImageBitmap` objects arrive, the pipeline calls `gl.createTexture()`, uplo
 
 ```js
 {
-  type:         'PROCESS_TILES',
-  jobId:        String,
-  url:          String,
-  displayWidth: Number,  // element's CSS display width in px (rect.width)
-  displayHeight: Number, // element's CSS display height in px (rect.height)
+  type:          'PROCESS_TILES',
+  jobId:         String,
+  url:           String,
+  displayWidth:  Number,  // element's display width in physical pixels (physWidth)
+  displayHeight: Number,  // element's display height in physical pixels (physHeight)
   tiles: [
     { tileIndex: Number, sourceX: Number, sourceY: Number,
       width: Number, height: Number }
@@ -150,9 +153,9 @@ Once `ImageBitmap` objects arrive, the pipeline calls `gl.createTexture()`, uplo
 }
 ```
 
-`displayWidth` and `displayHeight` are the element's rendered CSS dimensions, not the image's natural/intrinsic dimensions. Tile `sourceX`, `sourceY`, `width`, and `height` are all in this same display-pixel coordinate space.
+`displayWidth` and `displayHeight` are the element's physical pixel dimensions (CSS dimensions × `devicePixelRatio`, snapped to integers), not CSS pixels and not the image's natural/intrinsic dimensions. Tile `sourceX`, `sourceY`, `width`, and `height` are all in this same physical-pixel coordinate space.
 
-The worker fetches the URL as a Blob, then **first** resizes the full image to display dimensions via `createImageBitmap(blob, { resizeWidth, resizeHeight })`. Tiles are then cropped from that scaled bitmap using the display-space coordinates. This ensures the correct region of the image is sampled regardless of the image's natural size. The scaled full bitmap is closed after all tile crops complete.
+The worker fetches the URL as a Blob, then **first** resizes the full image to `displayWidth × displayHeight` physical pixels via `createImageBitmap(blob, { resizeWidth, resizeHeight })`. Tiles are then cropped from that scaled bitmap using the physical-pixel coordinates. This ensures the correct region of the image is sampled regardless of the image's natural size, and that the resulting bitmaps are at the correct resolution for 1:1 GPU rendering with no upscaling blur. The scaled full bitmap is closed after all tile crops complete.
 
 ### Worker → Main: `TILES_READY`
 
@@ -212,7 +215,7 @@ A continuous `requestAnimationFrame` loop. Every frame:
 3. Per element: call `ShaderSystem.getProgram(shaderName)`. Call `gl.useProgram()` if the program changed since the last tile.
 4. Set standard uniforms: `u_resolution`, `u_scrollX * dpr`, `u_scrollY * dpr`, `u_time`, `u_image`.
 5. Call `ShaderSystem.applyUniforms(shaderName)` to dispatch any custom uniform values stored for this shader.
-6. Per tile: if `tile.texture` is non-null, write the physical-pixel quad to the position buffer and call `gl.drawArrays(gl.TRIANGLES, 0, 6)`.
+6. Per tile: if `tile.texture` is non-null, write the quad to the position buffer using `tile.worldX`, `tile.worldY`, `tile.width`, `tile.height` directly (already physical pixels) and call `gl.drawArrays(gl.TRIANGLES, 0, 6)`.
 
 Sequential texture swapping keeps usage within `MAX_TEXTURE_IMAGE_UNITS` on all devices.
 

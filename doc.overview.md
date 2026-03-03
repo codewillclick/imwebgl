@@ -178,9 +178,9 @@ CoreAPI (_callbacks)
 ## Rendering Data Path
 
 ```
-tile.worldX / tile.worldY  (CSS px, page-absolute, set once at processElement time)
+tile.worldX / tile.worldY  (physical px, page-absolute, set once at processElement time)
         │
-        │  × devicePixelRatio  (applied at GPU vertex buffer boundary only)
+        │  (no further scaling — already physical pixels)
         ▼
 vertex buffer (a_position)
         │
@@ -235,9 +235,13 @@ WebGL2 is requested first (`getContext('webgl2', ...)`), with a fallback to WebG
 
 Written in ES5 (`var`, `function`, no classes, no arrow functions) because the library is intended for inline `<script>` injection into arbitrary host pages, including legacy environments with no transpilation step.
 
-## Tile Coordinates: CSS px With `* dpr` Only at GPU Boundary
+## Tile Coordinates: Physical Pixels, Snapped at Capture Time
 
-All tile positions (`worldX`, `worldY`, `width`, `height`) are stored in CSS pixels. The `* devicePixelRatio` multiplication happens only when writing to the WebGL vertex buffer and when passing scroll uniforms. This keeps the math human-readable throughout the pipeline and avoids double-scaling bugs.
+All tile positions (`worldX`, `worldY`, `width`, `height`) are stored in **physical pixels**. At `processElement` time, `getBoundingClientRect()` values are multiplied by `devicePixelRatio` and the element's four edges are `Math.round()`-ed to integer physical pixel boundaries before any tile geometry is derived. Vertex positions in the GPU buffer are taken directly from these values without further scaling.
+
+This approach fixes a sub-pixel edge bleeding bug: on fractional-DPR displays (e.g. Windows at 125 % or 150 % scaling), computing tile dimensions in CSS px and multiplying by dpr afterwards introduces a double-rounding error — the rendered quad can end up 1 physical pixel narrower or shorter than the actual element, producing a faint transparent fringe on the edges that makes the overlay appear slightly smaller than the underlying image. Snapping to integer physical pixels at capture time eliminates this.
+
+A secondary benefit: `displayWidth` / `displayHeight` sent to the worker are also physical pixel dimensions, so bitmaps are decoded at the exact resolution the GPU renders at. LINEAR filtering then maps 1:1 with no upscaling blur.
 
 ## Worker via Blob URL
 

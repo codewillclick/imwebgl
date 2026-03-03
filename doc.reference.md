@@ -186,6 +186,7 @@ All payloads are plain objects containing only serializable primitives. No paylo
   tiles: [
     { tileIndex: Number, sourceX: Number, sourceY: Number,
       width: Number, height: Number, worldX: Number, worldY: Number }
+    // All coordinates are in physical pixels.
   ]
 }
 ```
@@ -226,10 +227,10 @@ All payloads are plain objects containing only serializable primitives. No paylo
 {
   id:        String,
   tileIndex: Number,
-  worldX:    Number,
-  worldY:    Number,
-  width:     Number,
-  height:    Number
+  worldX:    Number,  // physical pixels, page-absolute
+  worldY:    Number,  // physical pixels, page-absolute
+  width:     Number,  // physical pixels
+  height:    Number   // physical pixels
 }
 ```
 

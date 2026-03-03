@@ -362,11 +362,12 @@
         info.tiles.forEach(function(tile) {
           if (!tile.texture) return;
 
-          // Build position quad in physical pixels (CSS px * dpr)
-          var x1 = tile.worldX * dpr;
-          var y1 = tile.worldY * dpr;
-          var x2 = (tile.worldX + tile.width)  * dpr;
-          var y2 = (tile.worldY + tile.height) * dpr;
+          // worldX/worldY are already in physical pixels (set by TexturePipeline.processElement).
+          // No dpr multiplication here.
+          var x1 = tile.worldX;
+          var y1 = tile.worldY;
+          var x2 = tile.worldX + tile.width;
+          var y2 = tile.worldY + tile.height;
           var pos = new Float32Array([x1,y1, x2,y1, x1,y2,  x1,y2, x2,y1, x2,y2]);
 
           _gl.bindBuffer(_gl.ARRAY_BUFFER, _posBuffer);
@@ -596,10 +597,32 @@
 
         var scrollX = global.pageXOffset || global.scrollX || 0;
         var scrollY = global.pageYOffset || global.scrollY || 0;
+        var dpr = global.devicePixelRatio || 1;
+
+        // getBoundingClientRect() returns CSS px values that can be fractional on
+        // high-DPR or fractional-DPR displays (e.g. Windows at 125 % or 150 % scaling).
+        // Computing tile dimensions in CSS px space and then multiplying by dpr introduces
+        // a double-rounding error: the rendered quad ends up a physical pixel narrower or
+        // shorter than the actual element, producing a faint transparent fringe on the
+        // edges (the "tightened inward" appearance).
+        //
+        // Fix: snap the element's four edges to integer physical pixels first, then derive
+        // all tile geometry from those values. This guarantees that vertex positions land
+        // on exact physical pixel boundaries and that displayWidth/displayHeight match the
+        // physical area the texture must cover (no LINEAR upscaling blur).
+        var physLeft   = Math.round(rect.left   * dpr);
+        var physTop    = Math.round(rect.top    * dpr);
+        var physRight  = Math.round((rect.left  + rect.width)  * dpr);
+        var physBottom = Math.round((rect.top   + rect.height) * dpr);
+        var physWidth  = physRight  - physLeft;
+        var physHeight = physBottom - physTop;
+
+        var physScrollX = Math.round(scrollX * dpr);
+        var physScrollY = Math.round(scrollY * dpr);
 
         var TILE = _TILE_SIZE;
-        var cols = Math.ceil(rect.width  / TILE) || 1;
-        var rows = Math.ceil(rect.height / TILE) || 1;
+        var cols = Math.ceil(physWidth  / TILE) || 1;
+        var rows = Math.ceil(physHeight / TILE) || 1;
 
         var tiles = [];
         var tileIndex = 0;
@@ -607,16 +630,18 @@
           for (var col = 0; col < cols; col++) {
             var sx = col * TILE;
             var sy = row * TILE;
-            var tw = Math.min(TILE, rect.width  - sx);
-            var th = Math.min(TILE, rect.height - sy);
+            var tw = Math.min(TILE, physWidth  - sx);
+            var th = Math.min(TILE, physHeight - sy);
             tiles.push({
               tileIndex: tileIndex++,
-              sourceX:   Math.round(sx),
-              sourceY:   Math.round(sy),
-              width:     Math.round(tw),
-              height:    Math.round(th),
-              worldX:    rect.left + scrollX + sx,
-              worldY:    rect.top  + scrollY + sy,
+              sourceX:   sx,
+              sourceY:   sy,
+              width:     tw,
+              height:    th,
+              // worldX/worldY are page-absolute physical pixel coordinates.
+              // The renderer uses them directly as vertex positions with no further dpr scaling.
+              worldX:    physLeft + physScrollX + sx,
+              worldY:    physTop  + physScrollY + sy,
               texture:   null
             });
           }
@@ -634,8 +659,11 @@
           rect:       rect
         });
 
+        // displayWidth/Height are physical pixels — the worker creates bitmaps at the
+        // exact resolution the GPU will render at, so LINEAR filtering does 1:1 pixel
+        // mapping with no upscaling blur.
         var job = { elementId: id, jobId: jobId, url: src, tiles: tiles,
-                    displayWidth: rect.width, displayHeight: rect.height };
+                    displayWidth: physWidth, displayHeight: physHeight };
         if (_activeJobs < _maxConcurrency) {
           _dispatch(job);
         } else {
