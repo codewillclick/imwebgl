@@ -910,7 +910,8 @@
       'font-family:monospace', 'font-size:11px', 'line-height:1.5',
       'z-index:10001', 'pointer-events:none',
       'border:1px solid rgba(255,255,255,0.15)',
-      'border-radius:4px', 'overflow:hidden'
+      'border-radius:4px', 'overflow:hidden',
+      'min-width:93px', 'min-height:93px'
     ].join(';');
 
     // ── Controls row ──
@@ -946,7 +947,7 @@
     // ── Viewport section ──
     var vpSection = document.createElement('div');
     vpSection.style.cssText =
-      'padding:4px 8px;border-bottom:1px solid rgba(255,255,255,0.12)';
+      'padding:4px 8px;border-bottom:1px solid rgba(255,255,255,0.12);pointer-events:auto;cursor:pointer';
     var vpTitle = document.createElement('div');
     vpTitle.style.cssText = 'color:#8cf;font-weight:bold';
     vpTitle.textContent = 'VIEWPORT';
@@ -1021,6 +1022,44 @@
     on(_EVENTS.TILES_ERROR,       function(p) { _addLog('[error]    ' + p.id + '  ' + p.error); });
     on(_EVENTS.TEXTURE_CREATED,   function(p) { _addLog('[vram +]   ' + p.id + '  tile ' + p.tileIndex); });
     on(_EVENTS.TEXTURE_DESTROYED, function(p) { _addLog('[vram -]   ' + p.id + '  x' + p.tileCount); });
+
+    // ── Collapse / expand ──
+    var _collapsed = false;
+    var _stashedChildren = [];
+    var _expandedWidth = panel.style.width;  // capture before any mutation
+
+    function _collapsePanel() {
+      _collapsed = true;
+      _stashedChildren = [];
+      while (panel.firstChild) {
+        _stashedChildren.push(panel.firstChild);
+        panel.removeChild(panel.firstChild);
+      }
+      panel.style.width         = '';         // fall through to min-width
+      panel.style.background    = 'transparent';
+      panel.style.pointerEvents = 'auto';
+      panel.style.cursor        = 'pointer';
+    }
+
+    function _expandPanel() {
+      _collapsed = false;
+      for (var i = 0; i < _stashedChildren.length; i++) {
+        panel.appendChild(_stashedChildren[i]);
+      }
+      _stashedChildren = [];
+      panel.style.width         = _expandedWidth;
+      panel.style.background    = 'rgba(0,0,0,0.82)';
+      panel.style.pointerEvents = 'none';
+      panel.style.cursor        = '';
+    }
+
+    vpSection.addEventListener('click', function(e) {
+      if (!_collapsed) { _collapsePanel(); e.stopPropagation(); }
+    });
+
+    panel.addEventListener('click', function() {
+      if (_collapsed) { _expandPanel(); }
+    });
 
     _debugPanel = panel;
     return _debugPanel;

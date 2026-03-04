@@ -150,6 +150,17 @@ Fixed-position overlay anchored to the right side of the viewport. A controls ro
 
 The LOG view should keep to the bottom of its scrollview, and for that matter be long enough to reach the bottom of the viewport.
 
+Clicking anywhere in the VIEWPORT section collapses the panel to a small blank square, hiding all content from view. Clicking the square again expands it back to full layout. This lets the user tuck the panel out of the way without losing it entirely.
+
+Collapsed state:
+
+```
+┌──┐
+└──┘
+```
+
+A 93×93 px square (one third of the panel's 280 px width), transparent background — only the border is visible.
+
 ---
 
 # Part 3: Shader Panel
@@ -203,6 +214,8 @@ Displays current scroll position and visible range.
 
 Wired to: `scroll`. Also reads `window.scrollY` on page load to populate before the first scroll event.
 
+**Click to collapse:** the entire viewport section is a click target (`pointer-events:auto; cursor:pointer`). Clicking it while the panel is expanded collapses the panel to a 93×93 px square (one third of its full width) and hides all sections. Clicking the square re-expands to the full layout. The collapse toggle has no effect on internal state — event subscriptions remain active while collapsed.
+
 ## Elements Section
 
 A persistent list of all elements the library has ever seen, with a live active indicator.
@@ -234,6 +247,7 @@ Wired to: `tilesDispatched`, `tilesReady`, `tilesError`, `textureCreated`, `text
 * Uses `on(event, fn)` via closure for all subscriptions. Subscriptions are registered exactly once at build time. No direct access to internal state beyond event payloads.
 * Style: `position:fixed; top:10px; right:10px; width:280px; border-radius:4px; overflow:hidden`. Content-height — no explicit height or flex layout on the outer panel.
 * The LOG section has `max-height:300px; overflow-y:auto` so it scrolls independently without forcing the panel to full viewport height.
+* **Collapse state:** local variables `_collapsed`, `_stashedChildren`, and `_expandedWidth` track state. `_expandedWidth` is captured from `panel.style.width` immediately after the panel is created, before any mutation. On collapse, all children are removed into `_stashedChildren` — including any externally-appended children like the shader panel — and `panel.style.width` is cleared so the panel has no explicit width; with no content it falls to the `min-width:93px` floor. `background:transparent` makes it invisible except for the border. On expand, children are re-appended in original order, `panel.style.width` is restored to `_expandedWidth`, and the background is restored. `vpSection` click triggers collapse with `e.stopPropagation()`; the panel's own click listener expands when collapsed.
 * The ELEMENTS section has `max-height:120px; overflow-y:auto` for the same reason.
 * `z-index` must exceed the library canvas (`9999`) — use `10001` or higher.
 * `pointer-events:none` on the outer panel; the controls row and log section override with `pointer-events:auto`.
